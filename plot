@@ -13,11 +13,13 @@ while True:
     if not line:
         break
     fields = line.strip().split()
+        
     if len(fields[0]) > 8:
         score = 0
         date0 = fields[0].split(':')[1]
         time0 = fields[1]
-          
+        room = fields[2].split('[')[1][:-1]
+        
     else:
         cate,date0 = fields[2].split(':')
         if cate == '__POS__]':
@@ -28,11 +30,12 @@ while True:
             else:
                 score = 0
         time0 = fields[3]
+        room = fields[4].split('[')[1][:-1]
            
-    record = [date0,time0,score]
+    record = [room,date0,time0,score]
     df.append(record)
 df = pd.DataFrame(df)
-df.columns = ['Date','Time','Score']     
+df.columns = ['Room','Date','Time','Score']     
 
 
 #%% 整理数据结构
@@ -41,15 +44,19 @@ def sec_to_time(seconds):
     m, s = divmod(seconds, 60)
     h, m = divmod(m, 60)
     return ("%02d:%02d:%02d" % (h, m, s))
+Room = list(set(df['Room']))
+Room.sort()
+Date = list(set(df['Date']))
+Date.sort()
 Time = [sec_to_time(x)  for x in range(24*60*60)]
-Date = ['2018/06/13','2018/06/14','2018/06/15','2018/06/16','2018/06/17','2018/06/18','2018/06/19','2018/06/20']
 sec = []
-for d in Date:
-    for t in Time:
-        sec.append([d,t])
+for r in Room:
+    for d in Date:
+        for t in Time:
+            sec.append([r,d,t])
 sec = pd.DataFrame(sec)
-sec.columns = ['Date','Time']
-df2 = pd.merge(df, sec, how = 'right', on = ['Date','Time'])
+sec.columns = ['Room','Date','Time']
+df2 = pd.merge(df, sec, how = 'right', on = ['Room','Date','Time'])
 df2['Count'] = 1-np.isnan(df2['Score'])
 
 Score = list(df2['Score'])
@@ -58,14 +65,7 @@ for i in range(len(Score)):
         Score[i] = 0 
 df2['Score'] = Score
 
-df2 = df2.sort_values(by = ['Date','Time'])
-
-
-#### 生成每10秒的标签
-Time_10sec = []
-for i in df2.index:
-    Time_10sec.append(df2.loc[i,'Time'][:7]+'0')
-df2['Time_10sec'] = Time_10sec
+df2 = df2.sort_values(by = ['Room','Date','Time'])
 
 
 #### 生成每分钟的标签
@@ -85,65 +85,99 @@ df2['Count2'] = df2['Count']
 df2['Score2'] = df2['Score']
 del df2['Count']
 del df2['Score']
-df2.columns = ['Date', 'Time', 'Time_10sec', 'Time_min','Time_10min', 'Count','Score']
+df2.columns = ['Room','Date', 'Time', 'Time_min','Time_10min', 'Count','Score']
 
 
-#%% 尝试画图
-for d in Date:    
-    #### 筛选出高频时段
-    dft = df2[df2['Date'] == d]
-    datet = d.replace('/','-')
-    df_10min = dft.groupby('Time_10min').sum()['Count']
-    temp = []
-    for k in range(len(df_10min)):
-        if df_10min[k] > 500:
-            temp.append(df_10min.index[k])
-    if not temp:
-        continue
-    temp.sort()
-    dft = dft[dft['Time_10min'] >= temp[0]]
-    dft = dft[dft['Time_10min'] <= temp[-1]]
-    
-    
-    #### 聚合数据
-    summ = dft.groupby('Time_min').sum()
-    fname = 'Summary on '+datet
-    summ.to_csv('D:/NLP/Result1/'+fname+'.csv')
-    df_count = summ['Count']
-    df_score = summ['Score']
-    
-    
-    #### 寻找峰值
-    mn = df_count.mean()
-    pos = []
-    value = []
-    pos0 = []
-    value0 = []
-    for i in range(len(df_count)):
-        if df_count[i] > 3*mn:
-            pos0.append(i)
-            value0.append(df_count[i])
-        else:
-            if pos0:
-                ind = value0.index(max(value0))
-                pos.append(pos0[ind])
-                value.append(value0[ind])
-                pos0 = []
-                value0 = []
-                
-    text = [df_count.index[i] for i in pos]
-    
-    
-    #### 绘制图形
-    pname = 'Plot Count'+fname[7:] 
-    plt.figure(figsize = (40,15))
-    plt.plot(df_count.index, df_count)
-    plt.xticks([])
-    plt.tick_params(labelsize=25)
-    plt.xlabel('Time',{'size':25})
-    plt.ylabel('Count',{'size':25})
-    plt.title('Change of Count',{'size':40})
-    for i in range(len(pos)):
-        plt.text(pos[i], value[i], text[i], fontsize = 20)
-    plt.savefig('D:/NLP/Plot1/'+pname+'.png')
-    plt.close()
+#%% 画出图形
+for r in Room:
+    dft = df2[df2['Room'] == r]
+    roomt = r
+    for d in Date:    
+        #### 筛选出高频时段
+        dft = df2[df2['Date'] == d]
+        if dft.empty:
+            continue
+        datet = d.replace('/','-')
+        df_10min = dft.groupby('Time_10min').sum()['Count']
+        temp = []
+        for k in range(len(df_10min)):
+            if df_10min[k] > 500:
+                temp.append(df_10min.index[k])
+        if not temp:
+            continue
+        temp.sort()
+        dft = dft[dft['Time_10min'] >= temp[0]]
+        dft = dft[dft['Time_10min'] <= temp[-1]]
+        
+        
+        #### 聚合数据
+        summ = dft.groupby('Time_min').sum()
+        df_count = summ['Count']
+        df_score = summ['Score']
+        
+        
+        #### 寻找峰值
+        mn = df_count.mean()
+        pos1 = []
+        value1 = []
+        pos0 = []
+        value0 = []
+        for i in range(len(df_count)):
+            if df_count[i] > 3*mn:
+                pos0.append(i)
+                value0.append(df_count[i])
+            else:
+                if pos0:
+                    ind = value0.index(max(value0))
+                    pos1.append(pos0[ind])
+                    value1.append(value0[ind])
+                    pos0 = []
+                    value0 = []           
+        text1 = [df_count.index[i] for i in pos1]
+        
+        df_score_abs = abs(df_score)
+        mn = df_score_abs.mean()
+        pos2 = []
+        value2 = []
+        pos0 = []
+        value0 = []
+        for i in range(len(df_score_abs)):
+            if df_score_abs[i] > 3*mn:
+                pos0.append(i)
+                value0.append(df_score[i])
+            else:
+                if pos0:
+                    ind = value0.index(max(value0))
+                    pos2.append(pos0[ind])
+                    value2.append(value0[ind])
+                    pos0 = []
+                    value0 = []           
+        text2 = [df_score_abs.index[i] for i in pos2]
+        
+        
+        #### 绘制图形
+        pname = 'Plot Count'+' in Room '+roomt+' on '+datet
+        plt.figure(figsize = (40,15))
+        plt.plot(df_count.index, df_count)
+        plt.xticks([])
+        plt.tick_params(labelsize=25)
+        plt.xlabel('Time',{'size':25})
+        plt.ylabel('Count',{'size':25})
+        plt.title('Change of Count\n'+'Room '+roomt+' -- '+datet,{'size':40})
+        for i in range(len(pos1)):
+            plt.text(pos1[i], value1[i], text1[i], fontsize = 20)
+        plt.savefig('D:/NLP/Plot1/'+pname+'.png')
+        plt.close()
+        
+        pname = 'Plot Score'+pname[10:] 
+        plt.figure(figsize = (40,15))
+        plt.plot(df_score.index, df_score)
+        plt.xticks([])
+        plt.tick_params(labelsize=25)
+        plt.xlabel('Time',{'size':25})
+        plt.ylabel('Score',{'size':25})
+        plt.title('Change of Score\n'+'Room '+roomt+' -- '+datet,{'size':40})
+        for i in range(len(pos2)):
+            plt.text(pos2[i], value2[i], text2[i], fontsize = 20)
+        plt.savefig('D:/NLP/Plot1/'+pname+'.png')
+        plt.close()
