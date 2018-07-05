@@ -181,4 +181,4 @@ for r in Room:
             plt.text(pos2[i], value2[i], text2[i], fontsize = 20)
         plt.savefig('D:/NLP/Plot1/'+pname+'.png')
         plt.close()
-###
+
